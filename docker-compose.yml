@@ -4,6 +4,12 @@ services:
     container_name: service_a
     ports:
       - "8001:8001"
+    environment:
+      - SERVICE_B_URL=http://service_b:8002
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+    depends_on:
+      - otel-collector
+      - service_b
     restart: unless-stopped
 
   service_b:
@@ -11,4 +17,32 @@ services:
     container_name: service_b
     ports:
       - "8002:8002"
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+    depends_on:
+      - otel-collector
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.99.0
+    container_name: otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "14318:4318"  # host 14318 -> collector 4318
+      - "14317:4317"  # host 14317 -> collector 4317
+    depends_on:
+      - jaeger
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger UI (keep)
+      - "24317:4317"  # host 24317 -> jaeger 4317
+      - "24318:4318"  # host 24318 -> jaeger 4318
     restart: unless-stopped
