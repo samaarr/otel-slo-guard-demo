@@ -4,14 +4,16 @@ import random
 import time
 import threading
 
-app = FastAPI(title="Service B")
+from telemetry import setup_tracing
 
-# --- Failure state (thread-safe) ---
+app = FastAPI(title="Service B")
+setup_tracing(app, service_name="service_b")
+
 _state_lock = threading.Lock()
 _state = {
-    "mode": "none",        # none | latency | error | mixed
-    "latency_ms": 100,     # added latency in milliseconds
-    "error_rate": 0.0,     # 0.0 to 1.0 probability of returning 500
+    "mode": "none",
+    "latency_ms": 100,
+    "error_rate": 0.0,
 }
 
 class FailModeUpdate(BaseModel):
@@ -43,22 +45,18 @@ def set_failmode(update: FailModeUpdate):
 
 @app.get("/compute")
 def compute():
-    # Snapshot current state quickly under lock
     with _state_lock:
         mode = _state["mode"]
         latency_ms = _state["latency_ms"]
         error_rate = _state["error_rate"]
 
-    # Inject latency
     if mode in {"latency", "mixed"} and latency_ms > 0:
         time.sleep(latency_ms / 1000.0)
 
-    # Inject errors
     if mode in {"error", "mixed"} and error_rate > 0.0:
         if random.random() < error_rate:
             raise HTTPException(status_code=500, detail="Injected failure from Service B")
 
-    # Normal response
     return {
         "result": "processed by B",
         "mode": mode,

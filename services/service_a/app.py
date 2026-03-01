@@ -3,7 +3,11 @@ import requests
 import logging
 import os
 
+from telemetry import setup_tracing
+
 app = FastAPI(title="Service A")
+setup_tracing(app, service_name="service_a")
+
 logging.basicConfig(level=logging.INFO)
 
 SERVICE_B_URL = os.getenv("SERVICE_B_URL", "http://service_b:8002")
@@ -22,7 +26,6 @@ def do_work():
         )
         response.raise_for_status()
         data = response.json()
-
         return {"status": "success", "from_b": data}
 
     except requests.exceptions.Timeout:
