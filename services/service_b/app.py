@@ -1,65 +1,70 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import random
 import time
-import threading
+
+from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
+from starlette.responses import Response
 
 from telemetry import setup_tracing
 
-app = FastAPI(title="Service B")
+app = FastAPI(title="service_b")
 setup_tracing(app, service_name="service_b")
 
-_state_lock = threading.Lock()
-_state = {
-    "mode": "none",
-    "latency_ms": 100,
-    "error_rate": 0.0,
-}
+service_b_requests_total = Counter(
+    "service_b_requests_total",
+    "Total requests to service B",
+    ["endpoint", "method", "status"],
+)
 
-class FailModeUpdate(BaseModel):
-    mode: str = Field(..., description="none|latency|error|mixed")
-    latency_ms: int = Field(100, ge=0, le=10000)
-    error_rate: float = Field(0.0, ge=0.0, le=1.0)
+STATE = {"mode": "none", "latency_ms": 50, "error_rate": 0.0}
+
+
+class FailMode(BaseModel):
+    mode: str
+    latency_ms: int = 50
+    error_rate: float = 0.0
+
 
 @app.get("/healthz")
-def health():
-    return {"status": "ok", "service": "B"}
+def healthz():
+    return {"ok": True}
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
 @app.get("/admin/state")
-def get_state():
-    with _state_lock:
-        return {"service": "B", **_state}
+def admin_state():
+    return STATE
+
 
 @app.post("/admin/failmode")
-def set_failmode(update: FailModeUpdate):
-    mode = update.mode.strip().lower()
-    if mode not in {"none", "latency", "error", "mixed"}:
-        raise HTTPException(status_code=400, detail="mode must be one of: none, latency, error, mixed")
+def set_failmode(cfg: FailMode):
+    STATE["mode"] = cfg.mode
+    STATE["latency_ms"] = cfg.latency_ms
+    STATE["error_rate"] = cfg.error_rate
+    return {"ok": True, "state": STATE}
 
-    with _state_lock:
-        _state["mode"] = mode
-        _state["latency_ms"] = update.latency_ms
-        _state["error_rate"] = update.error_rate
-
-    return {"ok": True, "updated": {"service": "B", **_state}}
 
 @app.get("/compute")
 def compute():
-    with _state_lock:
-        mode = _state["mode"]
-        latency_ms = _state["latency_ms"]
-        error_rate = _state["error_rate"]
+    endpoint = "/compute"
+    method = "GET"
 
-    if mode in {"latency", "mixed"} and latency_ms > 0:
+    mode = STATE["mode"]
+    latency_ms = STATE["latency_ms"]
+    error_rate = STATE["error_rate"]
+
+    if mode in {"slow", "mixed"} and latency_ms > 0:
         time.sleep(latency_ms / 1000.0)
 
     if mode in {"error", "mixed"} and error_rate > 0.0:
         if random.random() < error_rate:
+            service_b_requests_total.labels(endpoint, method, "error").inc()
             raise HTTPException(status_code=500, detail="Injected failure from Service B")
 
-    return {
-        "result": "processed by B",
-        "mode": mode,
-        "latency_ms": latency_ms,
-        "error_rate": error_rate,
-    }
+    service_b_requests_total.labels(endpoint, method, "success").inc()
+    return {"result": "processed by B", "mode": mode, "latency_ms": latency_ms, "error_rate": error_rate}

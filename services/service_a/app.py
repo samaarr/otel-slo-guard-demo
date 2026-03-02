@@ -1,42 +1,60 @@
-from fastapi import FastAPI
-import requests
-import logging
 import os
+import requests
+from fastapi import FastAPI
+
+from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
+from starlette.responses import Response
 
 from telemetry import setup_tracing
 
-app = FastAPI(title="Service A")
+app = FastAPI(title="service_a")
 setup_tracing(app, service_name="service_a")
 
-logging.basicConfig(level=logging.INFO)
+SERVICE_B_URL = os.getenv("SERVICE_B_URL", "http://service_b:8002") + "/compute"
+TIMEOUT_S = 0.5
 
-SERVICE_B_URL = os.getenv("SERVICE_B_URL", "http://service_b:8002")
+service_a_requests_total = Counter(
+    "service_a_requests_total",
+    "Total requests to service A",
+    ["endpoint", "method", "status"],
+)
+
+service_a_dependency_calls_total = Counter(
+    "service_a_dependency_calls_total",
+    "Calls from service A to dependencies",
+    ["dependency", "endpoint", "status"],
+)
+
 
 @app.get("/healthz")
-def health():
-    return {"status": "ok", "service": "A"}
+def healthz():
+    return {"ok": True}
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
 @app.get("/work")
-def do_work():
+def work():
+    endpoint = "/work"
+    method = "GET"
+
     try:
-        logging.info("Calling Service B...")
-        response = requests.get(
-            f"{SERVICE_B_URL}/compute",
-            timeout=2
-        )
-        response.raise_for_status()
-        data = response.json()
-        return {"status": "success", "from_b": data}
+        r = requests.get(SERVICE_B_URL, timeout=TIMEOUT_S)
+        r.raise_for_status()
+
+        service_a_dependency_calls_total.labels("service_b", "/compute", "success").inc()
+        service_a_requests_total.labels(endpoint, method, "success").inc()
+        return {"status": "ok", "service_b": r.json()}
 
     except requests.exceptions.Timeout:
-        logging.error("Timeout when calling Service B")
+        service_a_dependency_calls_total.labels("service_b", "/compute", "timeout").inc()
+        service_a_requests_total.labels(endpoint, method, "timeout").inc()
         return {"status": "error", "reason": "timeout"}
 
-    except requests.exceptions.HTTPError as e:
-        status = e.response.status_code if e.response is not None else None
-        logging.error(f"Service B returned HTTP {status}")
-        return {"status": "error", "reason": "dependency_http_error", "code": status}
-
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Request failed: {e}")
+    except Exception:
+        service_a_dependency_calls_total.labels("service_b", "/compute", "error").inc()
+        service_a_requests_total.labels(endpoint, method, "request_failed").inc()
         return {"status": "error", "reason": "request_failed"}

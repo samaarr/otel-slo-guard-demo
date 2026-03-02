@@ -1,0 +1,36 @@
+groups:
+  - name: otel-slo-guard-demo.rules
+    rules:
+      # 1) Service A failing responses
+      - alert: ServiceAHighErrorRate
+        expr: increase(service_a_requests_total{status!="success"}[1m]) > 0
+        for: 15s
+        labels:
+          severity: page
+          service: service_a
+        annotations:
+          summary: "Service A has errors"
+          description: "service_a had non-success requests in the last 1m."
+
+      # 2) Service B failing responses
+      - alert: ServiceBHighErrorRate
+        expr: increase(service_b_requests_total{status!="success"}[1m]) > 0
+        for: 15s
+        labels:
+          severity: page
+          service: service_b
+        annotations:
+          summary: "Service B has errors"
+          description: "service_b had non-success requests in the last 1m."
+
+      # 3) Dependency call failures (A -> B)
+      - alert: ServiceADependencyErrors
+        expr: increase(service_a_dependency_calls_total{status!="success"}[1m]) > 0
+        for: 15s
+        labels:
+          severity: page
+          service: service_a
+          dependency: service_b
+        annotations:
+          summary: "Service A dependency calls failing"
+          description: "service_a -> service_b dependency errors in last 1m."

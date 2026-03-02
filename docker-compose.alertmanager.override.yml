@@ -1,0 +1,16 @@
+services:
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+  alertmanager-webhook:
+    image: mendhak/http-https-echo:31
+    container_name: alertmanager-webhook
+    environment:
+      - HTTP_PORT=8080
+    ports:
+      - "8085:8080"

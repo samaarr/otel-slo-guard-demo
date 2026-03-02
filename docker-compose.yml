@@ -2,47 +2,55 @@ services:
   service_a:
     build: ./services/service_a
     container_name: service_a
-    ports:
-      - "8001:8001"
     environment:
       - SERVICE_B_URL=http://service_b:8002
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_SERVICE_NAME=service_a
+    ports:
+      - "8001:8001"
     depends_on:
-      - otel-collector
       - service_b
-    restart: unless-stopped
+      - otel-collector
 
   service_b:
     build: ./services/service_b
     container_name: service_b
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_SERVICE_NAME=service_b
     ports:
       - "8002:8002"
-    environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces
     depends_on:
       - otel-collector
-    restart: unless-stopped
 
   otel-collector:
     image: otel/opentelemetry-collector:0.99.0
     container_name: otel-collector
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
-      - ./otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "14318:4318"  # host 14318 -> collector 4318
-      - "14317:4317"  # host 14317 -> collector 4317
-    depends_on:
-      - jaeger
-    restart: unless-stopped
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
 
   jaeger:
     image: jaegertracing/all-in-one:1.56
     container_name: jaeger
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
     ports:
-      - "16686:16686" # Jaeger UI (keep)
-      - "24317:4317"  # host 24317 -> jaeger 4317
-      - "24318:4318"  # host 24318 -> jaeger 4318
-    restart: unless-stopped
+      - "16686:16686"   # UI
+      - "14250:14250"
+      - "14268:14268"
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - service_a
+      - service_b
