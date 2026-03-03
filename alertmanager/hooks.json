@@ -1,0 +1,10 @@
+[
+  {
+    "id": "default",
+    "execute-command": "/bin/echo",
+    "command-working-directory": "/",
+    "pass-arguments-to-command": [
+      { "source": "entire-payload" }
+    ]
+  }
+]

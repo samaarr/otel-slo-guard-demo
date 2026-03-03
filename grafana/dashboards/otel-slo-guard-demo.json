@@ -1,0 +1,96 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Service A request rate (req/s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(service_a_requests_total[1m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "title": "Service B request rate (req/s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(service_b_requests_total[1m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 7 },
+      "id": 3,
+      "title": "Service A error ratio (last 5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(service_a_requests_total{status!=\"success\"}[5m])) / sum(rate(service_a_requests_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 7 },
+      "id": 4,
+      "title": "Service B error ratio (last 5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(service_b_requests_total{status!=\"success\"}[5m])) / sum(rate(service_b_requests_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+      "id": 5,
+      "title": "Service A burn rates (Day 8 recording rules)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "slo:service_a:burn_rate:5m", "refId": "A" },
+        { "expr": "slo:service_a:burn_rate:30m", "refId": "B" },
+        { "expr": "slo:service_a:burn_rate:1h", "refId": "C" },
+        { "expr": "slo:service_a:burn_rate:6h", "refId": "D" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+      "id": 6,
+      "title": "Service B burn rates (Day 8 recording rules)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "slo:service_b:burn_rate:5m", "refId": "A" },
+        { "expr": "slo:service_b:burn_rate:30m", "refId": "B" },
+        { "expr": "slo:service_b:burn_rate:1h", "refId": "C" },
+        { "expr": "slo:service_b:burn_rate:6h", "refId": "D" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["otel", "slo", "demo"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "title": "otel-slo-guard-demo — SLO Overview",
+  "version": 1
+}

@@ -1,7 +1,10 @@
 groups:
+  # ----------------------------
+  # D07: simple alert rules (keep)
+  # ----------------------------
   - name: otel-slo-guard-demo.rules
+    interval: 5s
     rules:
-      # 1) Service A failing responses
       - alert: ServiceAHighErrorRate
         expr: increase(service_a_requests_total{status!="success"}[1m]) > 0
         for: 15s
@@ -12,7 +15,6 @@ groups:
           summary: "Service A has errors"
           description: "service_a had non-success requests in the last 1m."
 
-      # 2) Service B failing responses
       - alert: ServiceBHighErrorRate
         expr: increase(service_b_requests_total{status!="success"}[1m]) > 0
         for: 15s
@@ -23,7 +25,6 @@ groups:
           summary: "Service B has errors"
           description: "service_b had non-success requests in the last 1m."
 
-      # 3) Dependency call failures (A -> B)
       - alert: ServiceADependencyErrors
         expr: increase(service_a_dependency_calls_total{status!="success"}[1m]) > 0
         for: 15s
@@ -34,3 +35,120 @@ groups:
         annotations:
           summary: "Service A dependency calls failing"
           description: "service_a -> service_b dependency errors in last 1m."
+
+  # ----------------------------
+  # D08: SLO recording rules
+  # ----------------------------
+  - name: slo.recording
+    interval: 5s
+    rules:
+      # ---- Service A: error ratio ----
+      - record: slo:service_a:requests_total:rate5m
+        expr: sum(rate(service_a_requests_total[5m]))
+
+      - record: slo:service_a:errors_total:rate5m
+        expr: sum(rate(service_a_requests_total{status!="success"}[5m]))
+
+      - record: slo:service_a:error_ratio:5m
+        expr: slo:service_a:errors_total:rate5m / clamp_min(slo:service_a:requests_total:rate5m, 1e-9)
+
+      - record: slo:service_a:error_ratio:30m
+        expr: sum(rate(service_a_requests_total{status!="success"}[30m])) / clamp_min(sum(rate(service_a_requests_total[30m])), 1e-9)
+
+      - record: slo:service_a:error_ratio:1h
+        expr: sum(rate(service_a_requests_total{status!="success"}[1h])) / clamp_min(sum(rate(service_a_requests_total[1h])), 1e-9)
+
+      - record: slo:service_a:error_ratio:6h
+        expr: sum(rate(service_a_requests_total{status!="success"}[6h])) / clamp_min(sum(rate(service_a_requests_total[6h])), 1e-9)
+
+      # ---- Service B: error ratio ----
+      - record: slo:service_b:requests_total:rate5m
+        expr: sum(rate(service_b_requests_total[5m]))
+
+      - record: slo:service_b:errors_total:rate5m
+        expr: sum(rate(service_b_requests_total{status!="success"}[5m]))
+
+      - record: slo:service_b:error_ratio:5m
+        expr: slo:service_b:errors_total:rate5m / clamp_min(slo:service_b:requests_total:rate5m, 1e-9)
+
+      - record: slo:service_b:error_ratio:30m
+        expr: sum(rate(service_b_requests_total{status!="success"}[30m])) / clamp_min(sum(rate(service_b_requests_total[30m])), 1e-9)
+
+      - record: slo:service_b:error_ratio:1h
+        expr: sum(rate(service_b_requests_total{status!="success"}[1h])) / clamp_min(sum(rate(service_b_requests_total[1h])), 1e-9)
+
+      - record: slo:service_b:error_ratio:6h
+        expr: sum(rate(service_b_requests_total{status!="success"}[6h])) / clamp_min(sum(rate(service_b_requests_total[6h])), 1e-9)
+
+  # ----------------------------
+  # D08: Burn-rate alerts (99% SLO => 1% error budget)
+  # burn_rate = error_ratio / 0.01
+  # Fast "page": 5m + 1h windows, threshold 14.4x
+  # Slow "ticket": 30m + 6h windows, threshold 6x
+  # ----------------------------
+  - name: slo.alerts
+    interval: 5s
+    rules:
+      # ---- Service A burn rate ----
+      - record: slo:service_a:burn_rate:5m
+        expr: slo:service_a:error_ratio:5m / 0.01
+      - record: slo:service_a:burn_rate:1h
+        expr: slo:service_a:error_ratio:1h / 0.01
+      - record: slo:service_a:burn_rate:30m
+        expr: slo:service_a:error_ratio:30m / 0.01
+      - record: slo:service_a:burn_rate:6h
+        expr: slo:service_a:error_ratio:6h / 0.01
+
+      - alert: SLOServiceAErrorBudgetBurnFast
+        expr: (slo:service_a:burn_rate:5m > 14.4) and (slo:service_a:burn_rate:1h > 14.4)
+        for: 30s
+        labels:
+          severity: page
+          service: service_a
+          slo: availability
+        annotations:
+          summary: "SLO burn fast: service_a"
+          description: "service_a is burning the 99% SLO error budget too fast (fast windows)."
+
+      - alert: SLOServiceAErrorBudgetBurnSlow
+        expr: (slo:service_a:burn_rate:30m > 6) and (slo:service_a:burn_rate:6h > 6)
+        for: 2m
+        labels:
+          severity: ticket
+          service: service_a
+          slo: availability
+        annotations:
+          summary: "SLO burn slow: service_a"
+          description: "service_a is steadily burning the 99% SLO error budget (slow windows)."
+
+      # ---- Service B burn rate ----
+      - record: slo:service_b:burn_rate:5m
+        expr: slo:service_b:error_ratio:5m / 0.01
+      - record: slo:service_b:burn_rate:1h
+        expr: slo:service_b:error_ratio:1h / 0.01
+      - record: slo:service_b:burn_rate:30m
+        expr: slo:service_b:error_ratio:30m / 0.01
+      - record: slo:service_b:burn_rate:6h
+        expr: slo:service_b:error_ratio:6h / 0.01
+
+      - alert: SLOServiceBErrorBudgetBurnFast
+        expr: (slo:service_b:burn_rate:5m > 14.4) and (slo:service_b:burn_rate:1h > 14.4)
+        for: 30s
+        labels:
+          severity: page
+          service: service_b
+          slo: availability
+        annotations:
+          summary: "SLO burn fast: service_b"
+          description: "service_b is burning the 99% SLO error budget too fast (fast windows)."
+
+      - alert: SLOServiceBErrorBudgetBurnSlow
+        expr: (slo:service_b:burn_rate:30m > 6) and (slo:service_b:burn_rate:6h > 6)
+        for: 2m
+        labels:
+          severity: ticket
+          service: service_b
+          slo: availability
+        annotations:
+          summary: "SLO burn slow: service_b"
+          description: "service_b is steadily burning the 99% SLO error budget (slow windows)."

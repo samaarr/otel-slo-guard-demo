@@ -1,0 +1,16 @@
+flowchart LR
+  UA[User / curl] -->|/work| A[service_a :8001]
+  A -->|HTTP /compute| B[service_b :8002]
+
+  A -->|OTLP traces| OC[OTel Collector :4317]
+  B -->|OTLP traces| OC
+
+  OC -->|OTLP export| J[Jaeger :16686]
+
+  A -->|/metrics scrape| P[Prometheus :9090]
+  B -->|/metrics scrape| P
+
+  P -->|Alert rules| AM[Alertmanager :9093]
+  AM -->|webhook| WH[Webhook receiver :8080]
+
+  P -->|Datasource| G[Grafana :3000]
