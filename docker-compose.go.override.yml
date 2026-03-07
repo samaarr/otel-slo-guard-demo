@@ -1,0 +1,11 @@
+services:
+  service_b:
+    build: ./services/service_b_go
+    container_name: service_b
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_SERVICE_NAME=service_b_go
+    ports:
+      - "8002:8002"
+    depends_on:
+      - otel-collector
