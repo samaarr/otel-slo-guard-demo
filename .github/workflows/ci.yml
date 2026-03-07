@@ -1,0 +1,107 @@
+name: CI Smoke Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build images
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.prometheus.override.yml \
+            build --no-cache
+
+      - name: Start stack
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.prometheus.override.yml \
+            up -d
+
+      - name: Wait for services
+        run: sleep 20
+
+      - name: Health check - Service A
+        run: curl --fail --retry 5 --retry-delay 3 --retry-connrefused http://localhost:8001/healthz
+
+      - name: Health check - Service B
+        run: curl --fail --retry 5 --retry-delay 3 --retry-connrefused http://localhost:8002/healthz
+
+      - name: Health check - Prometheus
+        run: curl --fail --retry 5 --retry-delay 3 --retry-connrefused http://localhost:9090/-/healthy
+
+      - name: Health check - Alertmanager
+        run: curl --fail --retry 5 --retry-delay 3 --retry-connrefused http://localhost:9093/-/healthy
+
+      - name: Health check - Grafana
+        run: curl --fail --retry 5 --retry-delay 3 --retry-connrefused http://localhost:3000/api/health
+
+      - name: Verify metrics endpoints
+        run: |
+          curl --fail http://localhost:8001/metrics | grep -q "service_a_requests_total"
+          curl --fail http://localhost:8002/metrics | grep -q "service_b_requests_total"
+
+      - name: Verify Prometheus targets UP
+        run: |
+          sleep 15
+          curl -s http://localhost:9090/api/v1/targets | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          active = data['data']['activeTargets']
+          down = [t['labels']['job'] for t in active if t['health'] != 'up']
+          if down:
+              print(f'DOWN targets: {down}')
+              sys.exit(1)
+          print(f'All {len(active)} targets UP')
+          "
+
+      - name: Verify SLO rules loaded
+        run: |
+          curl -s http://localhost:9090/api/v1/rules | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          groups = data['data']['groups']
+          rule_names = [r['name'] for g in groups for r in g['rules']]
+          required = ['slo:service_a:error_ratio:5m', 'slo:service_b:error_ratio:5m']
+          missing = [r for r in required if r not in rule_names]
+          if missing:
+              print(f'Missing rules: {missing}')
+              sys.exit(1)
+          print(f'SLO rules loaded OK')
+          "
+
+      - name: Exercise /work and verify metrics increment
+        run: |
+          for i in $(seq 1 5); do curl -s http://localhost:8001/work > /dev/null; done
+          sleep 5
+          curl -s http://localhost:8001/metrics | grep "^service_a_requests_total"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.prometheus.override.yml \
+            logs --tail 50
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.prometheus.override.yml \
+            down -v
