@@ -125,3 +125,5 @@ While building this project I hit a gap in the OTel Python FastAPI instrumentati
 docs — no usage example and no mention of setup ordering requirements.
 
 Submitted a fix upstream: https://github.com/open-telemetry/opentelemetry-python-contrib/pull/4314
+
+Full technical post: https://dev.to/samaarr/building-a-production-grade-observability-stack-from-scratch-and-what-i-learned-226o
