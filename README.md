@@ -118,3 +118,10 @@ GitHub Actions smoke test on every push to main — builds from scratch, health-
 | Prometheus      | prom/prometheus:v2.52.0                      |
 | Alertmanager    | prom/alertmanager:v0.27.0                    |
 | Grafana         | grafana/grafana:10.4.2                       |
+
+## Upstream Contributions
+
+While building this project I hit a gap in the OTel Python FastAPI instrumentation
+docs — no usage example and no mention of setup ordering requirements.
+
+Submitted a fix upstream: https://github.com/open-telemetry/opentelemetry-python-contrib/pull/4314
