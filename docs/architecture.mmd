@@ -1,16 +1,37 @@
-flowchart LR
-  UA[User / curl] -->|/work| A[service_a :8001]
-  A -->|HTTP /compute| B[service_b :8002]
+flowchart TD
+    CLIENT["User / curl\nHTTP client"]
 
-  A -->|OTLP traces| OC[OTel Collector :4317]
-  B -->|OTLP traces| OC
+    subgraph SERVICES ["  Request Path  "]
+        A["service_a\n:8001 · FastAPI · Python"]
+        B["service_b\n:8002 · Go · failure injection"]
+    end
 
-  OC -->|OTLP export| J[Jaeger :16686]
+    subgraph PIPELINE ["  Telemetry Pipeline  "]
+        OC["otel-collector\n:4317 gRPC · :4318 HTTP\nreceive → batch → export"]
+    end
 
-  A -->|/metrics scrape| P[Prometheus :9090]
-  B -->|/metrics scrape| P
+    subgraph STORAGE ["  Storage & Metrics  "]
+        J["Jaeger\n:16686 · distributed traces"]
+        P["Prometheus\n:9090 · SLO recording rules"]
+    end
 
-  P -->|Alert rules| AM[Alertmanager :9093]
-  AM -->|webhook| WH[Webhook receiver :8080]
+    subgraph ALERTING ["  Alerting & Visualisation  "]
+        AM["Alertmanager\n:9093 · webhook receiver"]
+        G["Grafana\n:3000 · SLO + burn rate"]
+        WH["Webhook Receiver\n:8080"]
+    end
 
-  P -->|Datasource| G[Grafana :3000]
+    CLIENT -->|"GET /work"| A
+    A -->|"GET /compute"| B
+
+    A -->|"OTLP gRPC :4317"| OC
+    B -->|"OTLP gRPC :4317"| OC
+
+    OC -->|"OTLP HTTP :4318"| J
+
+    P -.->|"/metrics scrape"| A
+    P -.->|"/metrics scrape"| B
+
+    P -->|"burn-rate alerts"| AM
+    P -->|"datasource"| G
+    AM -->|"webhook"| WH
